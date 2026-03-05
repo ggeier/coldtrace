@@ -27,9 +27,11 @@ foreach(SRC ${SRCS})
   target_link_options(${TARGET} PRIVATE -fsanitize=thread)
   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${TARGET} PRIVATE -Wno-use-after-free)
-  elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+  elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND NOT COLDTRACE_ENABLE_COVERAGE)
     target_link_options(${TARGET} PRIVATE -shared-libsan)
   endif()
+
+  set_property(GLOBAL APPEND PROPERTY COLDTRACE_TEST_TARGETS ${TARGET})
 
   # if this is a trace test, we also link with mock_checker and set the test
   # runner accordingly
