@@ -31,6 +31,8 @@ foreach(SRC ${SRCS})
     target_link_options(${TARGET} PRIVATE -shared-libsan)
   endif()
 
+  set_property(GLOBAL APPEND PROPERTY COLDTRACE_TEST_TARGETS ${TARGET})
+
   # if this is a trace test, we also link with mock_checker and set the test
   # runner accordingly
   if(${TARGET} MATCHES "^trace_.*")

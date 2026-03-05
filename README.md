@@ -24,6 +24,13 @@ See the log output (optional):
 
     scripts/trace_dump.py traces/freezer_log_1_0.bin
 
+Run tests and generate a Clang coverage report (optional):
+
+    cmake -S . -Bbuild-coverage -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCOLDTRACE_ENABLE_COVERAGE=ON
+    cmake --build build-coverage --target coverage
+
+Coverage output files are written to `build-coverage/coverage/`.
+
 Run freezer analysis (optional):
 
     freezer -f traces
