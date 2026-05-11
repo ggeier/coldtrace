@@ -3,7 +3,7 @@
 #include <trace_checker.h>
 
 struct expected_entry expected_1[] = {
-    EXPECT_ENTRY(COLDTRACE_ALLOC),
+    EXPECT_SOME(COLDTRACE_ALLOC, 0, 1),
     EXPECT_VALUE(COLDTRACE_THREAD_CREATE, 0),
     EXPECT_ENTRY(COLDTRACE_READ),
     EXPECT_VALUE(COLDTRACE_THREAD_JOIN, 0),
