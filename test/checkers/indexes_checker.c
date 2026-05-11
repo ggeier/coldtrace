@@ -7,7 +7,7 @@
 #include <indexes_checker.h>
 #include <string.h>
 
-#define INVALID_INDEX (uint64_t) - 1
+#define INVALID_INDEX (uint64_t)-1
 
 struct index_set {
     uint64_t max_idx;
@@ -29,7 +29,9 @@ set_max_idx(struct index_set *set, uint64_t idx)
 void
 destroy(struct index_set *set)
 {
-    mempool_free(set->content);
+    if (set->content) {
+        mempool_free(set->content);
+    }
     set->content  = NULL;
     set->capacity = 0;
     set->max_idx  = 0;
