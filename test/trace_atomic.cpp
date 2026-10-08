@@ -1,6 +1,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <marker.h>
 #include <pthread.h>
 #include <trace_checker.h>
 
@@ -14,21 +15,23 @@
         EXPECT_SOME_SIZE(COLDTRACE_WRITE, 0, 1, sizeof(uint8_t))
 
 struct expected_entry expected_1[] = {
+    EXPECT_SUFFIX(COLDTRACE_TEST_MARKER),
     EXPECT_SOME_VALUE(COLDTRACE_ALLOC, 0, 1, 0),
     EXPECT_SOME_VALUE(COLDTRACE_WRITE, 0, 1, 0),
     EXPECT_SOME_VALUE(COLDTRACE_FREE, 0, 1, 0),
     EXPECT_SOME_VALUE(COLDTRACE_ALLOC, 0, 1, 1),
     EXPECT_SOME_VALUE(COLDTRACE_WRITE, 0, 1, 1),
-    EXPECT_VALUE(COLDTRACE_THREAD_CREATE, 2),
-    EXPECT_SOME(COLDTRACE_READ, 0, 1),
-    EXPECT_VALUE(COLDTRACE_THREAD_JOIN, 2),
-    EXPECT_VALUE(COLDTRACE_THREAD_CREATE, 3),
-    EXPECT_SOME(COLDTRACE_READ, 0, 1),
-    EXPECT_VALUE(COLDTRACE_THREAD_JOIN, 3),
-    EXPECT_VALUE(COLDTRACE_THREAD_CREATE, 4),
-    EXPECT_SOME(COLDTRACE_READ, 0, 1),
-    EXPECT_VALUE(COLDTRACE_THREAD_JOIN, 4),
-    EXPECT_ENTRY(COLDTRACE_THREAD_EXIT),
+
+    EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_CREATE, 2),
+    EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_JOIN, 2),
+
+    EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_CREATE, 3),
+    EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_JOIN, 3),
+
+    EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_CREATE, 4),
+    EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_JOIN, 4),
+
+    EXPECT_SUFFIX(COLDTRACE_THREAD_EXIT),
     EXPECT_END,
 };
 struct expected_entry expected_2[] = {
@@ -44,6 +47,7 @@ struct expected_entry expected_2[] = {
     ATOMIC_RW_CYCLE,
     ATOMIC_RW_CYCLE,
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_EXIT, 2),
+    EXPECT_SOME(COLDTRACE_FREE, 0, 2),
     EXPECT_END,
 };
 
@@ -60,6 +64,7 @@ struct expected_entry expected_3[] = {
     ATOMIC_RW_CYCLE,
     ATOMIC_RW_CYCLE,
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_EXIT, 3),
+    EXPECT_SOME(COLDTRACE_FREE, 0, 2),
     EXPECT_END,
 };
 
@@ -70,6 +75,7 @@ struct expected_entry expected_4[] = {
     EXPECT_SOME(COLDTRACE_ALLOC, 0, 1),
     EXPECT_SOME_VALUE(COLDTRACE_FREE, 0, 1, 6),
     EXPECT_VALUE(COLDTRACE_THREAD_EXIT, 4),
+    EXPECT_SOME(COLDTRACE_FREE, 0, 2),
     EXPECT_END,
 };
 
@@ -91,7 +97,7 @@ x_times_plus_one(void *ptr)
 void *
 free_after_finish(void *ptr)
 {
-    while (1) {
+    while (true) {
         if (at.load(std::memory_order_acquire) >= (X_TIMES * NUM_THREADS)) {
             printf("var was %d\n", *(uint8_t *)ptr);
             free(ptr);
@@ -108,6 +114,7 @@ main()
     register_expected_trace(2, expected_2);
     register_expected_trace(3, expected_3);
     register_expected_trace(4, expected_4);
+    coldtrace_test_marker();
 
     pthread_t threads[NUM_THREADS];
     pthread_t free_thread;

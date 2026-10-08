@@ -10,6 +10,10 @@
 std::atomic<uint32_t> at{0};
 pthread_barrier_t barrier;
 
+struct storage {
+    uint64_t last_atomic_idx;
+} thread_local_storage;
+
 void *
 x_times_plus_one(void *ptr)
 {
@@ -21,21 +25,23 @@ x_times_plus_one(void *ptr)
     return NULL;
 }
 
-void
+bool
 check_conforming(const void *entry, metadata_t *md)
 {
-    static uint64_t last_atomic_idx = -1;
-    coldtrace_entry_type type       = coldtrace_entry_parse_type(entry);
+    struct storage *tls       = SELF_TLS(md, &thread_local_storage);
+    uint64_t &last_atomic_idx = tls->last_atomic_idx;
+    coldtrace_entry_type type = coldtrace_entry_parse_type(entry);
     if (type == COLDTRACE_ATOMIC_READ) {
         last_atomic_idx = coldtrace_entry_parse_atomic_index(entry);
     } else if (type == COLDTRACE_ATOMIC_WRITE) {
         uint64_t write_idx = coldtrace_entry_parse_atomic_index(entry);
         if (write_idx < (2 * X_TIMES) && last_atomic_idx + 1 != write_idx) {
-            log_fatal(
-                "atomic fetch_add was split: read_idx: %ld write_idx: %ld",
-                last_atomic_idx, write_idx);
+            log_warn("atomic fetch_add was split: read_idx: %ld write_idx: %ld",
+                     last_atomic_idx, write_idx);
+            return false;
         }
     }
+    return true;
 }
 
 int

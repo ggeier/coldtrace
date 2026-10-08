@@ -1,6 +1,6 @@
-#include <assert.h>
 #include <stdlib.h>
 
+// NOLINTBEGIN
 int
 main(void)
 {
@@ -12,3 +12,4 @@ main(void)
 
     return 0;
 }
+// NOLINTEND

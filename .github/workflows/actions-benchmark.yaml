@@ -1,0 +1,83 @@
+name: Run Benchmarks
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-22.04]
+        cfg:
+          - cc: gcc
+            cxx: g++
+          - cc: clang
+            cxx: clang++
+        benchmark: [leveldb, raytracing, scratchapixel]
+    runs-on: ${{ matrix.os }}
+
+    permissions:
+      actions: read
+      contents: read
+      
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y miller hyperfine cmake make python3
+
+      - name: Checkout current code
+        uses: actions/checkout@v6
+        with:
+          path: current
+          submodules: recursive
+
+      - name: Checkout main branch (Baseline)
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: baseline
+          submodules: recursive
+
+      - name: Build and Benchmark Baseline
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        working-directory: ./baseline
+        run: |
+          cmake -S . -Bbuild \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=${{ matrix.cfg.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cfg.cxx }}
+          cmake --build build
+          chmod +x scripts/benchmark.sh
+          ./scripts/benchmark.sh --clean -b ${{ matrix.benchmark }}
+
+      - name: Build and Benchmark Current Code
+        working-directory: ./current
+        run: |
+          cmake -S . -Bbuild \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=${{ matrix.cfg.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cfg.cxx }}
+          cmake --build build
+          chmod +x scripts/benchmark.sh
+          ./scripts/benchmark.sh --clean -b ${{ matrix.benchmark }}
+
+      - name: Print summary to GitHub Actions
+        working-directory: ./current
+        run: |
+          SUMMARY_FILE=$(ls results/bench-*.md | head -n 1)
+          cat "$SUMMARY_FILE" >> $GITHUB_STEP_SUMMARY
+
+      - name: Compare Benchmarks
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        run: |
+          PREV_SUMMARY=$(ls baseline/results/bench-*.md | head -n 1)
+          CURR_SUMMARY=$(ls current/results/bench-*.md | head -n 1)
+
+          echo "Comparing $PREV_SUMMARY against $CURR_SUMMARY"  
+          python3 current/scripts/bench-comparison.py "$PREV_SUMMARY" "$CURR_SUMMARY" >> $GITHUB_STEP_SUMMARY

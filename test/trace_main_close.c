@@ -1,4 +1,3 @@
-#include <dice/ensure.h>
 #include <dice/log.h>
 #include <stdbool.h>
 #include <trace_checker.h>
@@ -11,10 +10,10 @@ when_closing(const void *page, size_t size)
     closed = true;
 }
 
-CHECK_FUNC void
+CHECK_FUNC bool
 when_final(void)
 {
-    ensure(closed);
+    return closed;
 }
 
 int

@@ -2,157 +2,182 @@
 # Copyright (C) 2025 Huawei Technologies Co., Ltd.
 # SPDX-License-Identifier: MIT
 #
-set -e
+set -eu
 
 MAKE=make
+CUR_DIR="$(cd "$(dirname "$0")" && pwd)"
+BENCH_DIR="$CUR_DIR/../bench"
+RESULTS_DIR="$CUR_DIR/../results"
+mkdir -p "$RESULTS_DIR"
 
-OPTION_CLEAN=no
-OPTION_CONFIG=no
-OPTION_BUILD=no
+OPTION_CLEAN="no"
+OPTION_NO_HYPERFINE="no"
+BUILD_TYPE="Release"
 
-OPTION_FORCE_RUN=no
-OPTION_FORCE_SUM=no
+SELECTED_BENCHMARKS=""
+SELECTED_VARIANTS=""
+ALL_BENCHMARKS="leveldb:; raytracing:; scratchapixel:;"
+KNOWN_BENCHMARKS="leveldb raytracing scratchapixel"
+KNOWN_VARIANTS="baseline tsan tsano coldtrace nowrites"
 
-OPTION_RUN_LEVELDB=yes
-OPTION_SUM_LEVELDB=yes
+# --- CLI ARGUMENT PARSING ---
+usage() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  -b, --benchmark <name>   Select benchmark(s): leveldb, raytracing, scratchapixel"
+    echo "                           Repeatable and/or comma-separated (e.g. -b leveldb,scratchapixel)"
+    echo "  -v, --variant <name>     Select variant(s): baseline, tsan, tsano, coldtrace, nowrites"
+    echo "                           Repeatable and/or comma-separated (e.g. -v baseline,coldtrace)"
+    echo "  --clean                  Remove the selected benchmarks' work/ (build) directories"
+    echo "  --no-hyperfine           Run standalone without hyperfine"
+    echo
+    echo "Note: If no benchmark is selected, ALL benchmarks are run and summarized."
+    echo "      If no variant is selected, ALL variants of each benchmark are run."
+    exit 1
+}
 
-OPTION_RUN_RENDERTRI=no
-OPTION_SUM_RENDERTRI=no
+validate() {
+    _kind="$1"; _value="$2"; _known="$3"
+    case " $_known " in
+        *" $_value "*) return 0 ;;
+        *)
+            echo "Error: unknown $_kind '$_value' (valid: $_known)"
+            usage ;;
+    esac
+}
 
-OPTION_RUN_RAYTRACING=yes
-OPTION_SUM_RAYTRACING=yes
+# Parse flags
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --clean)        OPTION_CLEAN="yes"; shift ;;
+        --no-hyperfine) OPTION_NO_HYPERFINE="yes"; shift ;;
+        -b|--benchmark|--benchmarks)
+            [ $# -ge 2 ] || { echo "Error: $1 requires an argument"; usage; }
+            for _b in $(echo "$2" | tr ',' ' '); do
+                validate benchmark "$_b" "$KNOWN_BENCHMARKS"
+                SELECTED_BENCHMARKS="$SELECTED_BENCHMARKS $_b "
+            done
+            shift 2 ;;
+        -v|--variant|--variants)
+            [ $# -ge 2 ] || { echo "Error: $1 requires an argument"; usage; }
+            for _v in $(echo "$2" | tr ',' ' '); do
+                validate variant "$_v" "$KNOWN_VARIANTS"
+                SELECTED_VARIANTS="$SELECTED_VARIANTS $_v "
+            done
+            shift 2 ;;
+        -h|--help)      usage ;;
+        *)              echo "Unknown option: $1"; usage ;;
+    esac
+done
 
-OPTION_RUN_SCRATCHAPIXEL=yes
-OPTION_SUM_SCRATCHAPIXEL=yes
+VARIANTS=$(echo $SELECTED_VARIANTS)
+NO_HF_FLAG=""
+[ "$OPTION_NO_HYPERFINE" = "yes" ] && NO_HF_FLAG="NO_HYPERFINE=1"
 
-OPTION_PULL_WIKI=no
-OPTION_MVTO_WIKI=no
-WIKI_URL="ssh://git@github.com/open-s4c/coldtrace.wiki.git"
-WIKI_DIR="coldtrace.wiki"
+# Check if a benchmark is meant to be processed
+process_benchmark() {
+    target_name="$1"
 
-enabled() {
-    if [ -z "$1" ] || [ "$1" != "yes" ]
-    then return 1
-    else return 0
+    if [ -z "$(echo $SELECTED_BENCHMARKS)" ]; then
+        return 0
+    fi
+
+    case " $SELECTED_BENCHMARKS " in
+        *" $target_name "*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+make_targets() {
+    _dir="$1"; _action="$2"; _target="$3"; shift 3
+    if [ -n "$_target" ]; then
+        $MAKE -sC "$_dir" "$_action" TARGET="$_target" "$@"
+    else
+        $MAKE -sC "$_dir" "$_action" "$@"
     fi
 }
 
-# CONFIG AND BUILD COLDTRACE
-
-if enabled $OPTION_CLEAN; then
-    echo rm -rf build
+# --- CLEAN (benchmark work/ dirs) ---
+if [ "$OPTION_CLEAN" = "yes" ]; then
+    for bench in $ALL_BENCHMARKS; do
+        name=$(echo "$bench" | cut -d':' -f1)
+        if process_benchmark "$name"; then
+            echo "--> Cleaning work directory: $name"
+            $MAKE -sC "$BENCH_DIR/$name" clean
+        fi
+    done
 fi
 
-if enabled $OPTION_CONFIG; then
-    cmake -S . -Bbuild -DCMAKE_BUILD_TYPE=Release
-fi
+# --- RUN BENCHMARKS ---
+for bench in $ALL_BENCHMARKS; do
+    name=$(echo "$bench" | cut -d':' -f1)
 
-if enabled $OPTION_BUILD; then
-    cmake --build build
-fi
+    if process_benchmark "$name"; then
 
-# RUN BENCHMARKS
-F=
-if enabled $OPTION_FORCE_RUN; then
-    F="FORCE=1"
-fi
+        _have=""
+        [ -f "$BENCH_DIR/$name/work/.build-type" ] && \
+            _have=$(cat "$BENCH_DIR/$name/work/.build-type" 2>/dev/null || echo "")
+        if [ -n "$_have" ] && [ "$_have" != "$BUILD_TYPE" ]; then
+            echo "--> Previous build was $_have; cleaning for $BUILD_TYPE: $name"
+            $MAKE -sC "$BENCH_DIR/$name" clean
+        fi
 
-if enabled $OPTION_RUN_RENDERTRI; then
-    echo Running rendertri
-    $MAKE -sC bench/rendertri run $F
-fi
+        echo "--> Building benchmark: $name"
+        $MAKE -sC "$BENCH_DIR/$name" build $NO_HF_FLAG
+        mkdir -p "$BENCH_DIR/$name/work"
+        echo "$BUILD_TYPE" > "$BENCH_DIR/$name/work/.build-type"
 
-if enabled $OPTION_RUN_LEVELDB; then
-    echo Running leveldb
-    $MAKE -sC bench/leveldb run $F
-fi
-
-if enabled $OPTION_RUN_RAYTRACING; then
-    echo Running raytracing
-    $MAKE -sC bench/raytracing run $F
-fi
-
-if enabled $OPTION_RUN_SCRATCHAPIXEL; then
-    echo Running scratchapixel
-    $MAKE -sC bench/scratchapixel run $F
-fi
-
-# SUMMARY
-
-DATE=$(date "+%Y-%m-%d")
-HOST=$(hostname -s)
-SUMMARY=bench-$HOST-$DATE.md
-F=
-if enabled $OPTION_FORCE_SUM; then
-    F="FORCE=1"
-fi
-
-rm -f $SUMMARY
-
-output() {
-    echo "$@" >> $SUMMARY
-}
-
-output "## Environment"
-output
-output "- Host: $HOST"
-output "- Date: $DATE"
-output "- Tag:  $(git rev-parse --short HEAD) ($(git branch --show-current))"
-output
-output '```'
-output "$(uname -a | fmt -w 70)"
-output '```'
-
-if enabled $OPTION_SUM_RENDERTRI; then
-    $MAKE -sC bench/rendertri process $F
-
-    output
-    output "## Rendertri"
-    cat bench/rendertri/work/results.csv | mlr --icsv --omd cat >> $SUMMARY
-fi
-
-if enabled $OPTION_SUM_LEVELDB; then
-    $MAKE -sC bench/leveldb process $F
-
-    output
-    output "## LevelDB"
-    cat bench/leveldb/work/results.csv \
-    | mlr --icsv --ifs=\; --omd cat >> $SUMMARY
-fi
-
-if enabled $OPTION_SUM_RAYTRACING; then
-    $MAKE -sC bench/raytracing process $F
-
-    output
-    output "## Raytracing"
-    cat bench/raytracing/work/results.csv \
-    | mlr --icsv --ifs=\; --omd cat >> $SUMMARY
-fi
-
-if enabled $OPTION_SUM_SCRATCHAPIXEL; then
-    $MAKE -sC bench/scratchapixel process $F
-
-    output
-    output "## Stratchapixel"
-    cat bench/scratchapixel/work/results.csv \
-    | mlr --icsv --ifs=\; --omd cat >> $SUMMARY
-fi
-
-# PULL WIKI
-
-if enabled $OPTION_PULL_WIKI; then
-    if [ ! -d $WIKI_DIR ]; then
-        git clone $WIKI_URL $WIKI_DIR
+        echo "--> Running benchmark: $name${VARIANTS:+ (variants: $VARIANTS)}"
+        make_targets "$BENCH_DIR/$name" run "$VARIANTS" FORCE=1 $NO_HF_FLAG
     fi
+done
 
-    if [ -d $WIKI_DIR ]; then
-        (cd $WIKI_DIR && git pull)
+# --- GENERATE SUMMARY ---
+DATE=$(date "+%Y-%m-%d %H:%M:%S")
+BRANCH=$(git branch --show-current 2>/dev/null || echo "")
+FILE_DATE=$(echo "$DATE" | tr ' ' '_' | tr ':' '-')
+SUMMARY="$RESULTS_DIR/bench-$FILE_DATE.md"
+
+: > "$SUMMARY"
+
+echo "--> Generating Environment Metadata"
+{
+    echo "## Environment"
+    echo
+    echo "- OS:  $(uname -srm)"
+    echo "- Tag: $(git rev-parse --short HEAD 2>/dev/null || echo 'N/A') (${BRANCH:-detached})"
+    [ "$OPTION_NO_HYPERFINE" = "yes" ] && echo "- Run: standalone (no hyperfine)"
+} >> "$SUMMARY"
+
+# --- PROCESS & APPEND BENCHMARK RESULTS ---
+for bench in $ALL_BENCHMARKS; do
+    name=$(echo "$bench" | cut -d':' -f1)
+    sep=$(echo "$bench" | cut -d':' -f2)
+
+    if process_benchmark "$name"; then
+        echo "--> Processing summary for: $name"
+
+        if [ -n "$VARIANTS" ]; then
+            PROC_TARGET="header $VARIANTS"
+        else
+            PROC_TARGET=""
+        fi
+        make_targets "$BENCH_DIR/$name" process "$PROC_TARGET" FORCE=1 $NO_HF_FLAG
+
+        {
+            echo
+            first_char=$(echo "$name" | cut -c1 | tr '[:lower:]' '[:upper:]')
+            rest_chars=$(echo "$name" | cut -c2-)
+            echo "## ${first_char}${rest_chars}"
+
+            CSV_FILE="$BENCH_DIR/$name/work/results.csv"
+            if [ -f "$CSV_FILE" ]; then
+                mlr --icsv --ifs "$sep" --omd cat "$CSV_FILE"
+            else
+                echo "Warning: Results file missing for $name"
+            fi
+        } >> "$SUMMARY"
     fi
-fi
+done
 
-# MOVE REPORT TO WIKI
-
-if enabled $OPTION_MVTO_WIKI; then
-    mv $SUMMARY $WIKI_DIR/bench
-fi
-
+echo "Benchmark execution complete! Report written to: $SUMMARY"

@@ -15,18 +15,23 @@ math(EXPR SLOT_subs_cxa "${COLDTRACE_BASE_SLOT} + 7")
 math(EXPR SLOT_subs_mman "${COLDTRACE_BASE_SLOT} + 8")
 math(EXPR SLOT_subs_annotate_rwlock "${COLDTRACE_BASE_SLOT} + 9")
 math(EXPR SLOT_subs_memcpy "${COLDTRACE_BASE_SLOT} + 10")
+math(EXPR SLOT_subs_marker "${COLDTRACE_BASE_SLOT} + 11")
+math(EXPR SLOT_subs_wait "${COLDTRACE_BASE_SLOT} + 12")
+math(EXPR SLOT_marker "${COLDTRACE_BASE_SLOT} + 13")
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION true)
 
 # main functionality
 set(SRCS
-    thread.cpp
+    thread.c
     procmaps.c
     counters.c
     config.c
     utils.c
     writer.c
-    entries.c)
+    entries.c
+    version.c
+    marker.c)
 
 # subscribers
 set(SRCS
@@ -35,10 +40,12 @@ set(SRCS
     subs_tsan.c
     subs_pthread.c
     subs_malloc.c
+    subs_marker.c
     subs_mman.c
     subs_memcpy.c
     subs_cxa.c
-    subs_annotate_rwlock.c)
+    subs_annotate_rwlock.c
+    subs_wait.c)
 
 set(MODS)
 foreach(SRC ${SRCS})
@@ -85,6 +92,11 @@ endif()
 add_library(coldtrace SHARED)
 target_link_libraries(coldtrace PUBLIC vsync dice.h)
 target_link_libraries(coldtrace PUBLIC ${MODS} dice-self-box.o)
+
+# force libc++ to be loaded before coldtrace to ensure availability of cxa_guard
+if(CMAKE_SYSTEM_NAME MATCHES "OHOS")
+  set_target_properties(coldtrace PROPERTIES LINKER_LANGUAGE CXX)
+endif()
 
 set(COLDTRACE_OBJS
     ${MODS}

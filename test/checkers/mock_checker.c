@@ -1,5 +1,11 @@
 #include "trace_checker.h"
 
+void *
+dice___memset(void *ptr, int value, size_t num)
+{
+    abort();
+}
+
 void
 register_expected_trace(uint64_t tid, struct expected_entry *trace)
 {
@@ -7,7 +13,7 @@ register_expected_trace(uint64_t tid, struct expected_entry *trace)
 }
 
 void
-register_entry_callback(void (*callback)(const void *entry, metadata_t *md))
+register_entry_callback(bool (*callback)(const void *entry, metadata_t *md))
 {
     abort();
 }
@@ -19,7 +25,7 @@ register_close_callback(void (*callback)(const void *page, size_t size))
 }
 
 void
-register_final_callback(void (*callback)(void))
+register_final_callback(bool (*callback)(void))
 {
     abort();
 }

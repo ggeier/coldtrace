@@ -1,3 +1,4 @@
+#include <marker.h>
 #include <sys/time.h>
 #include <thread>
 #include <trace_checker.h>
@@ -6,6 +7,7 @@
 #define NUM_THREADS 2
 
 struct expected_entry expected_1[] = {
+    EXPECT_SUFFIX(COLDTRACE_TEST_MARKER),
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_CREATE, 0),
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_JOIN, 0),
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_CREATE, 1),
@@ -16,18 +18,19 @@ struct expected_entry expected_1[] = {
 
 struct expected_entry expected_2[] = {
     EXPECT_VALUE(COLDTRACE_THREAD_START, 0),
-    EXPECT_VALUE(COLDTRACE_ATOMIC_READ, 2),
-    EXPECT_SOME(COLDTRACE_READ, 0, 1),
-    EXPECT_VALUE(COLDTRACE_CXA_GUARD_ACQUIRE, 2),
+    EXPECT_SUFFIX_VALUE(COLDTRACE_ATOMIC_READ, 2),
+    EXPECT_SUFFIX_VALUE(COLDTRACE_CXA_GUARD_ACQUIRE, 2),
     EXPECT_SUFFIX_VALUE(COLDTRACE_CXA_GUARD_RELEASE, 2),
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_EXIT, 0),
+    EXPECT_SOME(COLDTRACE_FREE, 0, 2),
     EXPECT_END,
 };
 
 struct expected_entry expected_3[] = {
     EXPECT_VALUE(COLDTRACE_THREAD_START, 1),
-    EXPECT_VALUE(COLDTRACE_ATOMIC_READ, 2),
+    EXPECT_SUFFIX_VALUE(COLDTRACE_ATOMIC_READ, 2),
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_EXIT, 1),
+    EXPECT_SOME(COLDTRACE_FREE, 0, 2),
     EXPECT_END,
 };
 
@@ -51,6 +54,7 @@ main()
     register_expected_trace(1, expected_1);
     register_expected_trace(2, expected_2);
     register_expected_trace(3, expected_3);
+    coldtrace_test_marker();
     std::thread threads[NUM_THREADS];
 
 

@@ -1,18 +1,20 @@
 #include <atomic>
 #include <iostream>
+#include <marker.h>
 #include <pthread.h>
 #include <string>
 #include <trace_checker.h>
 
-#define NUM_THREADS 2
+#define NUM_THREADS      2
+#define MAX_DATA_ENTRIES 1000
 
 // Global
-std::string computation(int);
-void print(std::string);
+std::string computation(int value);
+void print(std::string s);
 
 std::atomic<int> arr[3];
 
-std::string data[1000]; // non-atomic data
+std::string data[MAX_DATA_ENTRIES]; // non-atomic data
 
 void
 print(std::string s)
@@ -27,6 +29,7 @@ computation(int value)
 }
 
 struct expected_entry expected_1[] = {
+    EXPECT_SUFFIX(COLDTRACE_TEST_MARKER),
     EXPECT_SOME(COLDTRACE_ALLOC, 0, 1),
     EXPECT_SOME(COLDTRACE_FREE, 0, 1),
     EXPECT_SOME(COLDTRACE_WRITE, 0, 0),
@@ -42,7 +45,7 @@ struct expected_entry expected_1[] = {
     EXPECT_SOME(COLDTRACE_READ, 0, 1),
     EXPECT_VALUE(COLDTRACE_THREAD_JOIN, 4),
     EXPECT_SOME(COLDTRACE_READ, 0, 0),
-    EXPECT_ENTRY(COLDTRACE_THREAD_EXIT),
+    EXPECT_SUFFIX(COLDTRACE_THREAD_EXIT),
     EXPECT_END,
 };
 
@@ -57,6 +60,7 @@ struct expected_entry expected_2[] = {
     EXPECT_VALUE(COLDTRACE_ATOMIC_WRITE, 1),
     EXPECT_VALUE(COLDTRACE_ATOMIC_WRITE, 2),
     EXPECT_VALUE(COLDTRACE_THREAD_EXIT, 3),
+    EXPECT_SOME(COLDTRACE_FREE, 0, 2),
     EXPECT_END,
 };
 
@@ -67,6 +71,7 @@ struct expected_entry expected_3[] = {
     EXPECT_VALUE(COLDTRACE_ATOMIC_READ, 2),
     EXPECT_VALUE(COLDTRACE_FENCE, 6),
     EXPECT_SUFFIX_VALUE(COLDTRACE_THREAD_EXIT, 4),
+    EXPECT_SOME(COLDTRACE_FREE, 0, 2),
     EXPECT_END,
 };
 
@@ -107,12 +112,15 @@ ThreadB(void *arg)
 
     //  v0, v1, v2 might turn out to be -1, some or all of them.
     //  Otherwise it is safe to read the non-atomic data because of the fences:
-    if (v0 != -1)
+    if (v0 != -1) {
         print(data[v0]);
-    if (v1 != -1)
+    }
+    if (v1 != -1) {
         print(data[v1]);
-    if (v2 != -1)
+    }
+    if (v2 != -1) {
         print(data[v2]);
+    }
     return NULL;
 }
 
@@ -122,12 +130,13 @@ main()
     register_expected_trace(1, expected_1);
     register_expected_trace(2, expected_2);
     register_expected_trace(3, expected_3);
+    coldtrace_test_marker();
     arr[0].store(-1);
     arr[1].store(-1);
     arr[2].store(-1);
 
     pthread_t threads[NUM_THREADS];
-    ThreadAArgs *args = new ThreadAArgs{10, 20, 30};
+    ThreadAArgs *args = new ThreadAArgs{10, 20, 30}; // NOLINT
 
     pthread_create(threads + 0, NULL, ThreadA, args);
     pthread_join(*(threads), NULL);

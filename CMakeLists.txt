@@ -1,8 +1,28 @@
 cmake_minimum_required(VERSION 3.20)
 project(
   coldtrace
-  VERSION 0.1
+  VERSION 0.1.0
   LANGUAGES C CXX)
+
+# Get the short (8‑char) commit hash
+execute_process(
+    COMMAND git rev-parse --short=8 HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+string(SUBSTRING "${GIT_HASH}" 0 8 HASH8)
+math(EXPR GIT_HASH_UINT32 "0x${HASH8}")
+
+# Configure a header file
+configure_file(
+    ${CMAKE_SOURCE_DIR}/include/coldtrace/version.h.in
+    ${CMAKE_BINARY_DIR}/include/coldtrace/version.h
+    @ONLY
+)
+
+include_directories("${CMAKE_BINARY_DIR}/include")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -19,7 +39,7 @@ elseif(NOT CMAKE_SYSTEM_NAME MATCHES "NetBSD" AND NOT APPLE)
   set(HAVE_PTHREAD_CLOCKLOCK_CLOCKWAIT ON)
 endif()
 
-add_compile_options(-fPIC -g3 -D_GNU_SOURCE -DDICE_MAIN_START_DISABLE)
+add_compile_options(-fPIC -g3 -D_GNU_SOURCE -DDICE_MAIN_START_DISABLE -DDICE_MEMPOOL_USE_MMAP)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 set(DICE_MEMSET ON)
 
@@ -49,16 +69,22 @@ enable_testing()
 add_subdirectory(test)
 
 file(GLOB_RECURSE ALL_SOURCE_FILES
-    ${CMAKE_SOURCE_DIR}/src/*.cpp
-    ${CMAKE_SOURCE_DIR}/src/*.c
-    ${CMAKE_SOURCE_DIR}/include/*.h
-    ${CMAKE_SOURCE_DIR}/test/*.h
-    ${CMAKE_SOURCE_DIR}/test/*.cpp
-    ${CMAKE_SOURCE_DIR}/test/*.c)
+  ${CMAKE_SOURCE_DIR}/src/*.cpp
+  ${CMAKE_SOURCE_DIR}/src/*.c
+  ${CMAKE_SOURCE_DIR}/include/*.h
+  ${CMAKE_SOURCE_DIR}/test/*.h
+  ${CMAKE_SOURCE_DIR}/test/*.cpp
+  ${CMAKE_SOURCE_DIR}/test/*.c)
 
 add_custom_target(format
-    COMMAND clang-format -style=file -i ${ALL_SOURCE_FILES}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Running clang-format on all source files")
+  COMMAND clang-format -style=file -i ${ALL_SOURCE_FILES}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMENT "Running clang-format on all source files")
+
+add_custom_target(tidy
+  COMMAND run-clang-tidy -p ${CMAKE_BINARY_DIR} ${ALL_SOURCE_FILES}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMENT "Running clang-tidy only on project files"
+)
 
 add_custom_target(diff-check COMMAND git --no-pager diff --exit-code)

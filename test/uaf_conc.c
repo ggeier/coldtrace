@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+// NOLINTBEGIN
 #define SCALING 100000
 
 int *y[SCALING];
@@ -9,6 +10,7 @@ int *y[SCALING];
 void *
 free_thread(void *ptr)
 {
+    sleep(1);
     free(ptr);
     return NULL;
 }
@@ -36,3 +38,4 @@ main(int argc, char **argv)
     }
     return 0;
 }
+// NOLINTEND
